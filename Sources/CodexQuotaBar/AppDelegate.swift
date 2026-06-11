@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: 58)
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let quotaView = QuotaView(frame: NSRect(x: 0, y: 0, width: 320, height: 78))
     private let touchBarController = QuotaTouchBarController()
     private var client: CodexAppServerClient?
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.isVisible = true
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         if #available(macOS 11.0, *) {
-            statusItem.button?.image = NSImage(systemSymbolName: "bolt.horizontal.circle.fill", accessibilityDescription: "Codex")
+            statusItem.button?.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Codex")
         }
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.title = "--%"
