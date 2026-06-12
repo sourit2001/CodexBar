@@ -106,7 +106,7 @@ final class QuotaRowView: NSView {
             valueLabel.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 8),
             valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
             valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            valueLabel.widthAnchor.constraint(equalToConstant: 84)
+            valueLabel.widthAnchor.constraint(equalToConstant: 96)
         ])
     }
 }
@@ -119,7 +119,7 @@ final class SegmentedBatteryView: NSView {
     private let segments = 10
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 145, height: 12)
+        NSSize(width: 110, height: 12)
     }
 
     override func draw(_ dirtyRect: NSRect) {

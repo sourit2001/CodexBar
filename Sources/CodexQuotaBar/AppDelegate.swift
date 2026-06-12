@@ -2,7 +2,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let quotaView = QuotaView(frame: NSRect(x: 0, y: 0, width: 320, height: 78))
+    private let quotaView = QuotaView(frame: NSRect(x: 0, y: 0, width: 290, height: 78))
     private let touchBarController = QuotaTouchBarController()
     private var client: CodexAppServerClient?
     private var timer: Timer?
