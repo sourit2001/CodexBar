@@ -2,6 +2,7 @@ import AppKit
 
 final class QuotaView: NSView {
     private let stack = NSStackView()
+    private let attentionLabel = NSTextField(labelWithString: "")
     private let primaryRow = QuotaRowView(title: "5小时")
     private let secondaryRow = QuotaRowView(title: "周限额")
     private let errorLabel = NSTextField(labelWithString: "")
@@ -17,6 +18,8 @@ final class QuotaView: NSView {
     }
 
     func update(_ model: QuotaDisplayModel) {
+        attentionLabel.stringValue = model.attention.message ?? ""
+        attentionLabel.isHidden = !model.attention.needsUserAction
         primaryRow.update(model.primary)
         secondaryRow.update(model.secondary)
         errorLabel.stringValue = model.error ?? ""
@@ -37,6 +40,12 @@ final class QuotaView: NSView {
         errorLabel.textColor = .secondaryLabelColor
         errorLabel.lineBreakMode = .byTruncatingTail
 
+        attentionLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        attentionLabel.textColor = .systemOrange
+        attentionLabel.lineBreakMode = .byTruncatingTail
+        attentionLabel.isHidden = true
+
+        stack.addArrangedSubview(attentionLabel)
         stack.addArrangedSubview(primaryRow)
         stack.addArrangedSubview(secondaryRow)
         stack.addArrangedSubview(errorLabel)

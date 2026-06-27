@@ -29,10 +29,12 @@ struct RateLimitWindow: Decodable {
 struct QuotaDisplayModel {
     let primary: WindowDisplay
     let secondary: WindowDisplay
+    let attention: CodexAttentionState
     let error: String?
 
-    init(snapshot: RateLimitSnapshot?, error: String?) {
+    init(snapshot: RateLimitSnapshot?, attention: CodexAttentionState, error: String?) {
         self.error = error
+        self.attention = attention
         primary = WindowDisplay(title: "5小时", window: snapshot?.primary)
         secondary = WindowDisplay(title: "周限额", window: snapshot?.secondary)
     }
@@ -45,7 +47,41 @@ struct QuotaDisplayModel {
     }
 
     var statusTitle: String {
-        primary.remainingText
+        if attention.needsUserAction {
+            return "待批准"
+        }
+        return primary.remainingText
+    }
+}
+
+struct CodexAttentionState {
+    let waitingApprovalCount: Int
+    let waitingInputCount: Int
+
+    static let none = CodexAttentionState(waitingApprovalCount: 0, waitingInputCount: 0)
+
+    func merged(with other: CodexAttentionState) -> CodexAttentionState {
+        CodexAttentionState(
+            waitingApprovalCount: max(waitingApprovalCount, other.waitingApprovalCount),
+            waitingInputCount: max(waitingInputCount, other.waitingInputCount)
+        )
+    }
+
+    var needsUserAction: Bool {
+        waitingApprovalCount > 0 || waitingInputCount > 0
+    }
+
+    var message: String? {
+        if waitingApprovalCount > 0 && waitingInputCount > 0 {
+            return "Codex 需要确认或输入"
+        }
+        if waitingApprovalCount > 0 {
+            return "Codex 等待批准"
+        }
+        if waitingInputCount > 0 {
+            return "Codex 等待你输入"
+        }
+        return nil
     }
 }
 

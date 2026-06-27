@@ -84,6 +84,38 @@ final class CodexAppServerClient {
         }
     }
 
+    func readAttentionState(completion: @escaping (Result<CodexAttentionState, Error>) -> Void) {
+        queue.async {
+            self.ensureInitialized { initResult in
+                switch initResult {
+                case .success:
+                    self.send(method: "thread/loaded/list", params: ThreadLoadedListParams(limit: 50)) { result in
+                        switch result {
+                        case .success(let data):
+                            do {
+                                let response = try JSONDecoder().decode(ThreadLoadedListResponse.self, from: data)
+                                if response.data.isEmpty {
+                                    self.readRecentThreadStatuses(completion: completion)
+                                } else {
+                                    self.readThreadStatuses(threadIds: response.data, completion: completion)
+                                }
+                            } catch {
+                                AppLog.write("thread loaded list decode failed: \(error)")
+                                completion(.failure(CodexAppServerError.invalidResponse))
+                            }
+                        case .failure(let error):
+                            AppLog.write("thread loaded list failed: \(error.localizedDescription)")
+                            completion(.failure(error))
+                        }
+                    }
+                case .failure(let error):
+                    AppLog.write("initialize failed before attention read: \(error.localizedDescription)")
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
     private func startLocked() -> Bool {
         guard process == nil else { return true }
         guard FileManager.default.isExecutableFile(atPath: executable) else { return false }
@@ -233,6 +265,83 @@ final class CodexAppServerClient {
 
         callback(.success(result))
     }
+
+    private func readThreadStatuses(threadIds: [String], completion: @escaping (Result<CodexAttentionState, Error>) -> Void) {
+        guard !threadIds.isEmpty else {
+            readRecentThreadStatuses(completion: completion)
+            return
+        }
+
+        var remaining = threadIds.count
+        var waitingApprovalCount = 0
+        var waitingInputCount = 0
+        var firstError: Error?
+
+        for threadId in threadIds {
+            let params = ThreadReadParams(threadId: threadId, includeTurns: false)
+            send(method: "thread/read", params: params) { result in
+                switch result {
+                case .success(let data):
+                    do {
+                        let response = try JSONDecoder().decode(ThreadReadResponse.self, from: data)
+                        if response.thread.status.activeFlags.contains(.waitingOnApproval) {
+                            waitingApprovalCount += 1
+                        }
+                        if response.thread.status.activeFlags.contains(.waitingOnUserInput) {
+                            waitingInputCount += 1
+                        }
+                    } catch {
+                        AppLog.write("thread read decode failed for \(threadId): \(error)")
+                        if firstError == nil {
+                            firstError = CodexAppServerError.invalidResponse
+                        }
+                    }
+                case .failure(let error):
+                    AppLog.write("thread read failed for \(threadId): \(error.localizedDescription)")
+                    if firstError == nil {
+                        firstError = error
+                    }
+                }
+
+                remaining -= 1
+                guard remaining == 0 else { return }
+
+                if waitingApprovalCount > 0 || waitingInputCount > 0 || firstError == nil {
+                    completion(.success(CodexAttentionState(
+                        waitingApprovalCount: waitingApprovalCount,
+                        waitingInputCount: waitingInputCount
+                    )))
+                } else {
+                    completion(.failure(firstError ?? CodexAppServerError.invalidResponse))
+                }
+            }
+        }
+    }
+
+    private func readRecentThreadStatuses(completion: @escaping (Result<CodexAttentionState, Error>) -> Void) {
+        send(method: "thread/list", params: ThreadListParams(limit: 50)) { result in
+            switch result {
+            case .success(let data):
+                do {
+                    let response = try JSONDecoder().decode(ThreadListResponse.self, from: data)
+                    completion(.success(Self.attentionState(from: response.data.map(\.status))))
+                } catch {
+                    AppLog.write("thread list decode failed: \(error)")
+                    completion(.failure(CodexAppServerError.invalidResponse))
+                }
+            case .failure(let error):
+                AppLog.write("thread list failed: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+
+    private static func attentionState(from statuses: [CodexThreadStatus]) -> CodexAttentionState {
+        CodexAttentionState(
+            waitingApprovalCount: statuses.filter { $0.activeFlags.contains(.waitingOnApproval) }.count,
+            waitingInputCount: statuses.filter { $0.activeFlags.contains(.waitingOnUserInput) }.count
+        )
+    }
 }
 
 private struct JSONRPCRequest<T: Encodable>: Encodable {
@@ -325,6 +434,56 @@ private struct JSONRPCError: Decodable {
 }
 
 private struct EmptyParams: Encodable {}
+
+private struct ThreadLoadedListParams: Encodable {
+    let limit: Int
+}
+
+private struct ThreadLoadedListResponse: Decodable {
+    let data: [String]
+}
+
+private struct ThreadReadParams: Encodable {
+    let threadId: String
+    let includeTurns: Bool
+}
+
+private struct ThreadReadResponse: Decodable {
+    let thread: CodexThread
+}
+
+private struct ThreadListParams: Encodable {
+    let limit: Int
+}
+
+private struct ThreadListResponse: Decodable {
+    let data: [CodexThread]
+}
+
+private struct CodexThread: Decodable {
+    let status: CodexThreadStatus
+}
+
+private struct CodexThreadStatus: Decodable {
+    let type: String
+    let activeFlags: [CodexThreadActiveFlag]
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case activeFlags
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        activeFlags = try container.decodeIfPresent([CodexThreadActiveFlag].self, forKey: .activeFlags) ?? []
+    }
+}
+
+private enum CodexThreadActiveFlag: String, Decodable {
+    case waitingOnApproval
+    case waitingOnUserInput
+}
 
 private struct InitializeParams: Encodable {
     let clientInfo: ClientInfo
