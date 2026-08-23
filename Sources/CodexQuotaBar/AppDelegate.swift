@@ -67,7 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openCodex() {
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Codex.app"), configuration: NSWorkspace.OpenConfiguration())
+        let candidates = ["/Applications/ChatGPT.app", "/Applications/Codex.app"]
+        guard let path = candidates.first(where: FileManager.default.fileExists) else { return }
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: NSWorkspace.OpenConfiguration())
     }
 
     private func refresh() {

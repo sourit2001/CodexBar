@@ -2,10 +2,11 @@
 
 macOS menu bar and Touch Bar app for Codex rate limits.
 
-It starts:
+It starts the bundled Codex executable from the current ChatGPT app, with the legacy standalone Codex app as a fallback:
 
 ```sh
-/Applications/Codex.app/Contents/Resources/codex app-server --listen stdio://
+/Applications/ChatGPT.app/Contents/Resources/codex app-server --listen stdio://
+# or: /Applications/Codex.app/Contents/Resources/codex app-server --listen stdio://
 ```
 
 Then it sends newline-delimited JSON-RPC `account/rateLimits/read` over stdio and displays:

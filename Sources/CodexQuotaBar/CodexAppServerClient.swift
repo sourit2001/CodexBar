@@ -10,7 +10,7 @@ enum CodexAppServerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .codexExecutableMissing:
-            return "找不到 Codex.app"
+            return "找不到 Codex 或 ChatGPT.app"
         case .processNotRunning:
             return "Codex app-server 未运行"
         case .rpcError(let message):
@@ -24,7 +24,10 @@ enum CodexAppServerError: LocalizedError {
 }
 
 final class CodexAppServerClient {
-    private let executable = "/Applications/Codex.app/Contents/Resources/codex"
+    private let executableCandidates = [
+        "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "/Applications/Codex.app/Contents/Resources/codex"
+    ]
     private let queue = DispatchQueue(label: "CodexQuotaBar.CodexAppServerClient")
     private var process: Process?
     private var stdout = Pipe()
@@ -118,7 +121,9 @@ final class CodexAppServerClient {
 
     private func startLocked() -> Bool {
         guard process == nil else { return true }
-        guard FileManager.default.isExecutableFile(atPath: executable) else { return false }
+        guard let executable = executableCandidates.first(where: FileManager.default.isExecutableFile) else {
+            return false
+        }
 
         stdout = Pipe()
         stdin = Pipe()
