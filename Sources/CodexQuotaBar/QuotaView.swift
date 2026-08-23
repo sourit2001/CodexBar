@@ -21,7 +21,9 @@ final class QuotaView: NSView {
         attentionLabel.stringValue = model.attention.message ?? ""
         attentionLabel.isHidden = !model.attention.needsUserAction
         primaryRow.update(model.primary)
+        primaryRow.isHidden = !model.primary.hasValue
         secondaryRow.update(model.secondary)
+        secondaryRow.isHidden = !model.secondary.hasValue
         errorLabel.stringValue = model.error ?? ""
         errorLabel.isHidden = model.error == nil
     }

@@ -10,10 +10,12 @@ It starts:
 
 Then it sends newline-delimited JSON-RPC `account/rateLimits/read` over stdio and displays:
 
-- `primary`: 5 hour quota
-- `secondary`: weekly quota
+- all available rate-limit windows (`primary` and, when present, `secondary`)
+- a label derived from `windowDurationMins` (for example, 5 hours or weekly)
 - remaining percent: `100 - usedPercent`
 - reset time: `resetsAt`
+
+Codex currently returns the weekly quota as `primary` and may omit `secondary`. The app derives each label from the window duration and hides missing windows, while remaining compatible with older responses that contain both 5-hour and weekly quotas.
 
 The UI keeps the previous snapshot while refreshes are in flight, so failed or slow refreshes do not blank the menu bar or Touch Bar.
 

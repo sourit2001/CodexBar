@@ -35,22 +35,23 @@ struct QuotaDisplayModel {
     init(snapshot: RateLimitSnapshot?, attention: CodexAttentionState, error: String?) {
         self.error = error
         self.attention = attention
-        primary = WindowDisplay(title: "5小时", window: snapshot?.primary)
-        secondary = WindowDisplay(title: "周限额", window: snapshot?.secondary)
+        primary = WindowDisplay(window: snapshot?.primary, fallbackTitle: "主要额度")
+        secondary = WindowDisplay(window: snapshot?.secondary, fallbackTitle: "次要额度")
     }
 
     var menuTitle: String {
-        if primary.hasValue {
-            return "Codex \(primary.remainingText)"
-        }
-        return "Codex --%"
+        "Codex \(activeWindow.remainingText)"
     }
 
     var statusTitle: String {
         if attention.needsUserAction {
             return "待批准"
         }
-        return primary.remainingText
+        return activeWindow.remainingText
+    }
+
+    private var activeWindow: WindowDisplay {
+        primary.hasValue ? primary : secondary
     }
 }
 
@@ -91,8 +92,8 @@ struct WindowDisplay {
     let used: Int?
     let resetText: String
 
-    init(title: String, window: RateLimitWindow?) {
-        self.title = title
+    init(window: RateLimitWindow?, fallbackTitle: String) {
+        title = Self.formatTitle(window?.windowDurationMins) ?? fallbackTitle
         remaining = window?.remainingPercent
         used = window?.usedPercent
         resetText = Self.formatReset(window?.resetsAt)
@@ -105,6 +106,21 @@ struct WindowDisplay {
     var remainingText: String {
         guard let remaining else { return "--%" }
         return "\(remaining)%"
+    }
+
+    private static func formatTitle(_ durationMinutes: Int64?) -> String? {
+        guard let durationMinutes, durationMinutes > 0 else { return nil }
+
+        if durationMinutes == 10_080 {
+            return "周限额"
+        }
+        if durationMinutes.isMultiple(of: 1_440) {
+            return "\(durationMinutes / 1_440)天"
+        }
+        if durationMinutes.isMultiple(of: 60) {
+            return "\(durationMinutes / 60)小时"
+        }
+        return "\(durationMinutes)分钟"
     }
 
     private static func formatReset(_ rawTimestamp: Int64?) -> String {
