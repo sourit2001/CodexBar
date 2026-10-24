@@ -91,7 +91,7 @@ final class QuotaView: NSView {
             stack.addArrangedSubview(claudePrimaryRow)
             stack.addArrangedSubview(claudeSecondaryRow)
             stack.addArrangedSubview(claudeErrorLabel)
-            claudeSeparator.widthAnchor.constraint(equalToConstant: 266).isActive = true
+            claudeSeparator.widthAnchor.constraint(equalToConstant: 294).isActive = true
         }
 
         NSLayoutConstraint.activate([
@@ -159,7 +159,7 @@ final class QuotaRowView: NSView {
             valueLabel.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 8),
             valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
             valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            valueLabel.widthAnchor.constraint(equalToConstant: 96)
+            valueLabel.widthAnchor.constraint(equalToConstant: 124)
         ])
     }
 }
