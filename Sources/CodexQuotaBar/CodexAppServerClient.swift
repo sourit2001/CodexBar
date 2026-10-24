@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum CodexAppServerError: LocalizedError {
@@ -24,10 +25,39 @@ enum CodexAppServerError: LocalizedError {
 }
 
 final class CodexAppServerClient {
-    private let executableCandidates = [
-        "/Applications/ChatGPT.app/Contents/Resources/codex",
-        "/Applications/Codex.app/Contents/Resources/codex"
-    ]
+    /// Finds a Codex executable: bundled in ChatGPT.app / Codex.app (wherever
+    /// the app is installed), then the standalone `codex` CLI.
+    static func locateExecutable() -> String? {
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
+        var appPaths = [
+            "/Applications/ChatGPT.app",
+            "/Applications/Codex.app",
+            "\(home)/Applications/ChatGPT.app",
+            "\(home)/Applications/Codex.app"
+        ]
+        for bundleID in ["com.openai.chat", "com.openai.codex"] {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                if !appPaths.contains(url.path) { appPaths.append(url.path) }
+            }
+        }
+        var candidates = appPaths.map { "\($0)/Contents/Resources/codex" }
+        // Newer ChatGPT builds ship codex inside "Codex Framework.framework"
+        // under a versioned folder, so search the bundle for it.
+        for appPath in appPaths where fileManager.fileExists(atPath: appPath) {
+            candidates += bundledExecutables(inApp: appPath)
+        }
+        candidates += [
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "\(home)/.local/bin/codex",
+            "\(home)/.npm-global/bin/codex",
+            "\(home)/.bun/bin/codex"
+        ]
+        let found = candidates.first(where: fileManager.isExecutableFile)
+        AppLog.write("codex executable: \(found ?? "not found; tried \(candidates)")")
+        return found
+    }
     private let queue = DispatchQueue(label: "CodexQuotaBar.CodexAppServerClient")
     private var process: Process?
     private var stdout = Pipe()
@@ -119,9 +149,30 @@ final class CodexAppServerClient {
         }
     }
 
+    /// Executable files named `codex` inside an app bundle, newest first.
+    private static func bundledExecutables(inApp appPath: String) -> [String] {
+        let fileManager = FileManager.default
+        let root = URL(fileURLWithPath: appPath).appendingPathComponent("Contents")
+        guard let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            options: []
+        ) else { return [] }
+
+        var found: [(path: String, date: Date)] = []
+        for case let url as URL in enumerator {
+            guard url.lastPathComponent == "codex",
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                  values.isRegularFile == true,
+                  fileManager.isExecutableFile(atPath: url.path) else { continue }
+            found.append((url.path, values.contentModificationDate ?? .distantPast))
+        }
+        return found.sorted { $0.date > $1.date }.map(\.path)
+    }
+
     private func startLocked() -> Bool {
         guard process == nil else { return true }
-        guard let executable = executableCandidates.first(where: FileManager.default.isExecutableFile) else {
+        guard let executable = Self.locateExecutable() else {
             return false
         }
 
@@ -134,14 +185,30 @@ final class CodexAppServerClient {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = ["app-server", "--listen", "stdio://"]
+        // GUI apps get a minimal PATH; a CLI install of codex may be a Node
+        // script that needs `node` from Homebrew or similar.
+        var environment = ProcessInfo.processInfo.environment
+        let extraPath = "/opt/homebrew/bin:/usr/local/bin:\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin"
+        environment["PATH"] = extraPath + ":" + (environment["PATH"] ?? "/usr/bin:/bin")
+        process.environment = environment
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
-        process.terminationHandler = { [weak self] _ in
-            self?.queue.async {
-                self?.initialized = false
-                self?.initializing = false
-                self?.process = nil
+        process.terminationHandler = { [weak self] terminated in
+            let status = terminated.terminationStatus
+            // Give the stderr handler a moment to deliver the final message.
+            self?.queue.asyncAfter(deadline: .now() + 0.3) {
+                guard let self else { return }
+                let detail = self.lastStderr
+                AppLog.write("codex app-server exited status=\(status) stderr=\(detail)")
+                self.initialized = false
+                self.initializing = false
+                self.process = nil
+                let lastLine = detail.split(separator: "\n").last.map(String.init) ?? "退出码 \(status)"
+                let error = CodexAppServerError.rpcError("Codex 服务已退出：\(lastLine)")
+                let callbacks = self.pending
+                self.pending.removeAll()
+                callbacks.values.forEach { $0(.failure(error)) }
             }
         }
 
@@ -158,7 +225,11 @@ final class CodexAppServerClient {
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             self?.queue.async {
-                self?.lastStderr = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    self?.lastStderr = trimmed
+                    AppLog.write("codex stderr: \(trimmed)")
+                }
             }
         }
 

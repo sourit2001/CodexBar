@@ -2,7 +2,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let quotaView = QuotaView(frame: NSRect(x: 0, y: 0, width: 290, height: 100))
+    private let quotaView = QuotaView(frame: NSRect(x: 0, y: 0, width: 290, height: 190), showsClaude: true)
     private let touchBarController = QuotaTouchBarController()
     private let approvalLogMonitor = ApprovalLogMonitor()
     private var client: CodexAppServerClient?
@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var attentionTimer: Timer?
     private var lastSnapshot: RateLimitSnapshot?
     private var attentionState: CodexAttentionState = .none
+    private let claudeClient = ClaudeUsageClient()
+    private var claudeTimer: Timer?
+    private var lastClaudeSnapshot: ClaudeUsageSnapshot?
+    private var codexStatusTitle = "--%"
+    private var claudeStatusTitle = "--%"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -30,12 +35,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refreshAttention()
         }
 
+        updateClaudeUI(snapshot: nil, error: "正在读取 Claude Code 额度")
+        refreshClaude()
+        // The Claude usage endpoint is rate limited, so poll it less often.
+        claudeTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            self?.refreshClaude()
+        }
+
         touchBarController.present()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         quotaTimer?.invalidate()
         attentionTimer?.invalidate()
+        claudeTimer?.invalidate()
         client?.stop()
     }
 
@@ -47,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.title = "--%"
-        statusItem.button?.toolTip = "Codex 额度"
+        statusItem.button?.toolTip = "Codex / Claude Code 额度"
         AppLog.write("status button configured: \(statusItem.button != nil)")
 
         let menu = NSMenu()
@@ -64,12 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshFromMenu() {
         refresh()
         refreshAttention()
+        refreshClaude()
     }
 
     @objc private func openCodex() {
-        let candidates = ["/Applications/ChatGPT.app", "/Applications/Codex.app"]
-        guard let path = candidates.first(where: FileManager.default.fileExists) else { return }
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: NSWorkspace.OpenConfiguration())
+        let byBundleID = ["com.openai.codex", "com.openai.chat"].lazy
+            .compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+        let fallback = ["/Applications/ChatGPT.app", "/Applications/Codex.app"]
+            .first(where: FileManager.default.fileExists).map { URL(fileURLWithPath: $0) }
+        guard let url = byBundleID ?? fallback else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     private func refresh() {
@@ -112,9 +129,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateUI(snapshot: RateLimitSnapshot?, attention: CodexAttentionState, error: String?) {
         let model = QuotaDisplayModel(snapshot: snapshot, attention: attention, error: error)
-        statusItem.button?.title = model.statusTitle
-        statusItem.button?.toolTip = attention.message ?? "Codex 额度"
+        codexStatusTitle = model.statusTitle
+        updateStatusTitle()
+        statusItem.button?.toolTip = attention.message ?? "左：Codex 剩余  右（C）：Claude Code 5小时剩余"
         quotaView.update(model)
         touchBarController.update(model)
+    }
+
+    private func refreshClaude() {
+        claudeClient.readUsage { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let snapshot):
+                    self.lastClaudeSnapshot = snapshot
+                    self.updateClaudeUI(snapshot: snapshot, error: nil)
+                case .failure(let error):
+                    self.updateClaudeUI(snapshot: self.lastClaudeSnapshot, error: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func updateClaudeUI(snapshot: ClaudeUsageSnapshot?, error: String?) {
+        let model = ClaudeDisplayModel(snapshot: snapshot, error: error)
+        claudeStatusTitle = model.primary.remainingText
+        quotaView.updateClaude(model)
+        updateStatusTitle()
+    }
+
+    private func updateStatusTitle() {
+        statusItem.button?.title = "\(codexStatusTitle) · C \(claudeStatusTitle)"
     }
 }

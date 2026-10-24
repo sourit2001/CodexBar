@@ -6,15 +6,35 @@ final class QuotaView: NSView {
     private let primaryRow = QuotaRowView(title: "5小时")
     private let secondaryRow = QuotaRowView(title: "周限额")
     private let errorLabel = NSTextField(labelWithString: "")
+    private let showsClaude: Bool
+    private let codexHeader = NSTextField(labelWithString: "Codex")
+    private let claudeSeparator = NSBox()
+    private let claudeHeader = NSTextField(labelWithString: "Claude Code")
+    private let claudePrimaryRow = QuotaRowView(title: "5小时")
+    private let claudeSecondaryRow = QuotaRowView(title: "周限额")
+    private let claudeErrorLabel = NSTextField(labelWithString: "")
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect, showsClaude: Bool) {
+        self.showsClaude = showsClaude
         super.init(frame: frameRect)
         setup()
     }
 
+    override convenience init(frame frameRect: NSRect) {
+        self.init(frame: frameRect, showsClaude: false)
+    }
+
     required init?(coder: NSCoder) {
+        showsClaude = false
         super.init(coder: coder)
         setup()
+    }
+
+    func updateClaude(_ model: ClaudeDisplayModel) {
+        claudePrimaryRow.update(model.primary)
+        claudeSecondaryRow.update(model.secondary)
+        claudeErrorLabel.stringValue = model.error ?? ""
+        claudeErrorLabel.isHidden = model.error == nil
     }
 
     func update(_ model: QuotaDisplayModel) {
@@ -47,10 +67,32 @@ final class QuotaView: NSView {
         attentionLabel.lineBreakMode = .byTruncatingTail
         attentionLabel.isHidden = true
 
+        if showsClaude {
+            for header in [codexHeader, claudeHeader] {
+                header.font = .systemFont(ofSize: 11, weight: .medium)
+                header.textColor = .secondaryLabelColor
+            }
+            stack.addArrangedSubview(codexHeader)
+        }
         stack.addArrangedSubview(attentionLabel)
         stack.addArrangedSubview(primaryRow)
         stack.addArrangedSubview(secondaryRow)
         stack.addArrangedSubview(errorLabel)
+
+        if showsClaude {
+            claudeSeparator.boxType = .separator
+            claudeErrorLabel.font = .systemFont(ofSize: 10)
+            claudeErrorLabel.textColor = .secondaryLabelColor
+            claudeErrorLabel.lineBreakMode = .byTruncatingTail
+            claudeErrorLabel.isHidden = true
+
+            stack.addArrangedSubview(claudeSeparator)
+            stack.addArrangedSubview(claudeHeader)
+            stack.addArrangedSubview(claudePrimaryRow)
+            stack.addArrangedSubview(claudeSecondaryRow)
+            stack.addArrangedSubview(claudeErrorLabel)
+            claudeSeparator.widthAnchor.constraint(equalToConstant: 266).isActive = true
+        }
 
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),

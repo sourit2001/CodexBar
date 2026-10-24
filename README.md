@@ -20,6 +20,22 @@ Codex currently returns the weekly quota as `primary` and may omit `secondary`. 
 
 The UI keeps the previous snapshot while refreshes are in flight, so failed or slow refreshes do not blank the menu bar or Touch Bar.
 
+## Claude Code quota
+
+The menu also shows Claude Code's 5 hour and weekly remaining quota (the same
+numbers as `/usage`). The menu bar title reads `Codex% · C Claude%`.
+
+It reads the OAuth token the Claude Code CLI stores in the macOS Keychain
+(`Claude Code-credentials`, falling back to `~/.claude/.credentials.json`) and
+calls `GET https://api.anthropic.com/api/oauth/usage` every 5 minutes. The
+Claude desktop app keeps its own encrypted login, so if you only use Claude
+Code inside the desktop app, log in once with the `claude` CLI (subscription
+login, not an API key). On first launch macOS asks to allow Keychain access:
+choose "Always Allow". When the access token is about to expire (or the API
+returns 401), the app refreshes it with the stored refresh token and writes the
+new tokens back to the same Keychain item (or file) in Claude Code's own format,
+so the CLI keeps working. If refreshing fails, running `claude` once fixes it.
+
 ## Build
 
 ```sh

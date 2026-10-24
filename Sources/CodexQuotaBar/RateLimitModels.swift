@@ -92,6 +92,13 @@ struct WindowDisplay {
     let used: Int?
     let resetText: String
 
+    init(title: String, claudeWindow: ClaudeUsageWindow?) {
+        self.title = title
+        remaining = claudeWindow?.remainingPercent
+        used = claudeWindow?.usedPercent
+        resetText = Self.formatReset(claudeWindow?.resetsAt.map { Int64($0.timeIntervalSince1970) })
+    }
+
     init(window: RateLimitWindow?, fallbackTitle: String) {
         title = Self.formatTitle(window?.windowDurationMins) ?? fallbackTitle
         remaining = window?.remainingPercent
@@ -131,5 +138,17 @@ struct WindowDisplay {
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "M/d HH:mm"
         return formatter.string(from: date)
+    }
+}
+
+struct ClaudeDisplayModel {
+    let primary: WindowDisplay
+    let secondary: WindowDisplay
+    let error: String?
+
+    init(snapshot: ClaudeUsageSnapshot?, error: String?) {
+        self.error = error
+        primary = WindowDisplay(title: "5小时", claudeWindow: snapshot?.fiveHour)
+        secondary = WindowDisplay(title: "周限额", claudeWindow: snapshot?.sevenDay)
     }
 }
